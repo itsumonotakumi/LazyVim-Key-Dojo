@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import './App.css'
 import { CATEGORY_LABELS, LANGUAGE_OPTIONS, UI_TEXT, type Language } from './data/i18n'
 import { QUESTIONS } from './data/questions'
@@ -10,6 +10,7 @@ const DURATION_OPTIONS = [30, 60, 90]
 const ACCURACY_BONUS_START = 0.9
 const ACCURACY_BONUS_STEP = 2
 const ACCURACY_BONUS_MAX = 1.2
+const CONFETTI_COUNT = 14
 
 const HIGH_SCORE_KEY = 'lazyvim-key-dojo:high-score'
 const LANGUAGE_KEY = 'lazyvim-key-dojo:language'
@@ -62,6 +63,13 @@ function App() {
   const [lastResult, setLastResult] = useState<'correct' | 'wrong' | null>(null)
   const [showResult, setShowResult] = useState(false)
   const [soundOn, setSoundOn] = useState(false)
+  const [flash, setFlash] = useState<'correct' | 'wrong' | 'streak' | null>(null)
+  const [showKeys, setShowKeys] = useState(false)
+  const [showDescription, setShowDescription] = useState(true)
+  const [revealAnswer, setRevealAnswer] = useState(false)
+  const [shake, setShake] = useState(false)
+  const [scorePulse, setScorePulse] = useState(false)
+  const [confettiKey, setConfettiKey] = useState(0)
   const [highScore, setHighScore] = useState(() => {
     const stored = localStorage.getItem(HIGH_SCORE_KEY)
     if (!stored) return 0
@@ -99,9 +107,28 @@ function App() {
       ? currentQuestion.titleEn
       : currentQuestion.title
     : ''
+  const questionDescription = currentQuestion
+    ? language === 'ja'
+      ? currentQuestion.description ?? `${currentQuestion.title}を実行します。`
+      : currentQuestion.descriptionEn ?? `Run: ${currentQuestion.titleEn}.`
+    : ''
+
+  const revealKeys = showKeys || revealAnswer
+
+  const confettiPieces = useMemo(
+    () =>
+      Array.from({ length: CONFETTI_COUNT }, (_, index) => ({
+        id: index,
+        x: (index * 7) % 100,
+        r: (index * 35) % 360,
+        d: `${(index * 0.05).toFixed(2)}s`,
+      })),
+    [],
+  )
 
   const audioRef = useRef<AudioContext | null>(null)
   const endTimeRef = useRef<number | null>(null)
+  const revealTimerRef = useRef<number | null>(null)
   const scoreRef = useRef(score)
   const accuracyRef = useRef(accuracyMultiplier)
   const highScoreRef = useRef(highScore)
@@ -110,6 +137,11 @@ function App() {
 
   const resetRound = useCallback(
     (nextIndex?: number) => {
+      if (revealTimerRef.current) {
+        window.clearTimeout(revealTimerRef.current)
+        revealTimerRef.current = null
+      }
+      setRevealAnswer(false)
       const targetIndex =
         typeof nextIndex === 'number'
           ? nextIndex
@@ -156,25 +188,54 @@ function App() {
   const handleCorrectToken = useCallback(() => {
     setCorrectInputs((value) => value + 1)
     setLastResult('correct')
+    setFlash('correct')
     handleSound(true)
   }, [handleSound])
+
+  const startReveal = useCallback(
+    (onComplete?: () => void) => {
+      setRevealAnswer(true)
+      if (revealTimerRef.current) {
+        window.clearTimeout(revealTimerRef.current)
+      }
+      if (onComplete) {
+        revealTimerRef.current = window.setTimeout(() => {
+          setRevealAnswer(false)
+          revealTimerRef.current = null
+          onComplete()
+        }, 420)
+      } else {
+        revealTimerRef.current = window.setTimeout(() => {
+          setRevealAnswer(false)
+          revealTimerRef.current = null
+        }, 420)
+      }
+    },
+    [],
+  )
 
   const handleWrongToken = useCallback(() => {
     setWrongInputs((value) => value + 1)
     setLastResult('wrong')
     setStreak(0)
+    setFlash('wrong')
+    startReveal()
     handleSound(false)
-  }, [handleSound])
+  }, [handleSound, startReveal])
 
   const completeQuestion = useCallback(() => {
     setStreak((value) => {
       const nextStreak = value + 1
       const bonus = nextStreak % 5 === 0 ? 10 : 0
       setScore((scoreValue) => scoreValue + 10 + bonus)
+      if (nextStreak % 5 === 0) {
+        setFlash('streak')
+        setConfettiKey((value) => value + 1)
+      }
       return nextStreak
     })
-    resetRound()
-  }, [resetRound])
+    startReveal(() => resetRound())
+  }, [resetRound, startReveal])
 
   const handleTokenInput = useCallback((inputToken: string) => {
     if (!currentQuestion) return
@@ -271,6 +332,26 @@ function App() {
   }, [running, mode, duration])
 
   useEffect(() => {
+    if (!flash) return
+    if (flash === 'wrong') {
+      setShake(true)
+    }
+    const timer = window.setTimeout(() => setFlash(null), 160)
+    const shakeTimer = window.setTimeout(() => setShake(false), 220)
+    return () => {
+      window.clearTimeout(timer)
+      window.clearTimeout(shakeTimer)
+    }
+  }, [flash])
+
+  useEffect(() => {
+    if (score === 0) return
+    setScorePulse(true)
+    const timer = window.setTimeout(() => setScorePulse(false), 220)
+    return () => window.clearTimeout(timer)
+  }, [score])
+
+  useEffect(() => {
     scoreRef.current = score
     accuracyRef.current = accuracyMultiplier
     highScoreRef.current = highScore
@@ -328,7 +409,7 @@ function App() {
   }
 
   return (
-    <div className="app">
+    <div className={`app ${shake ? 'app-shake' : ''}`}>
       <header className="hero">
         <div className="hero-text">
           <span className="eyebrow">{t.eyebrow}</span>
@@ -340,6 +421,7 @@ function App() {
             <span>{t.heroSubtitleLeader}</span>
             {t.heroSubtitleSuffix}
           </p>
+          <p className="notice">{t.heroNotice}</p>
         </div>
         <div className="hero-panel">
           <div className="panel-item">
@@ -356,6 +438,111 @@ function App() {
           </div>
         </div>
       </header>
+
+      <main className="game">
+        <section className={`prompt-card ${flash ? `flash-${flash}` : ''}`}>
+          <div className="prompt-header">
+            <span>{t.promptLabel}</span>
+            <span className="mode-tag" data-testid="mode-tag">
+              {mode === 'practice' ? t.modeTagPractice : t.modeTagTime}
+            </span>
+          </div>
+          <h2 data-testid="question-title">
+            {questionTitle} <span>{questionSubtitle}</span>
+          </h2>
+          {revealKeys && (
+            <div className="keys-row">
+              {currentQuestion?.keys.map((key, index) => (
+                <span
+                  className="key-chip"
+                  key={`${currentQuestion.id}-${key}-${index}`}
+                >
+                  {key}
+                </span>
+              ))}
+            </div>
+          )}
+          {showDescription && questionDescription && (
+            <p className="action-desc">{questionDescription}</p>
+          )}
+          <div
+            className={`confetti ${flash === 'streak' ? 'active' : ''}`}
+            key={confettiKey}
+            aria-hidden="true"
+          >
+            {confettiPieces.map((piece) => (
+              <span
+                className="confetti-piece"
+                key={piece.id}
+                style={{
+                  '--x': `${piece.x}%`,
+                  '--r': `${piece.r}deg`,
+                  '--d': piece.d,
+                } as CSSProperties}
+              />
+            ))}
+          </div>
+          <div className="input-row">
+            {currentQuestion?.keys.map((_, index) => {
+              const status =
+                index < tokenIndex
+                  ? 'correct'
+                  : index === tokenIndex
+                    ? lastResult === 'wrong'
+                      ? 'wrong'
+                      : 'active'
+                    : 'pending'
+              return (
+                <span
+                  className={`input-token ${status}`}
+                  data-testid={`input-token-${index}`}
+                  key={`input-${index}`}
+                >
+                  {typedTokens[index] ?? ''}
+                </span>
+              )
+            })}
+          </div>
+          <p className="hint">
+            {t.hint}
+          </p>
+        </section>
+
+        <aside className="stats">
+          <div className="stat-card">
+            <span>{t.score}</span>
+            <strong
+              className={scorePulse ? 'score-pop' : ''}
+              data-testid="score-value"
+            >
+              {score}
+            </strong>
+          </div>
+          <div className="stat-card">
+            <span>{t.correct}</span>
+            <strong data-testid="correct-value">{correctInputs}</strong>
+          </div>
+          <div className="stat-card">
+            <span>{t.wrong}</span>
+            <strong data-testid="wrong-value">{wrongInputs}</strong>
+          </div>
+          <div className="stat-card">
+            <span>{t.timeLeft}</span>
+            <strong data-testid="time-left">
+              {mode === 'practice' ? t.infinity : `${timeLeft}s`}
+            </strong>
+          </div>
+          {mode === 'time' && !running && (
+            <button
+              className="primary"
+              data-testid="start-button"
+              onClick={startTimeAttack}
+            >
+              {t.start}
+            </button>
+          )}
+        </aside>
+      </main>
 
       <section className="controls">
         <div className="control-group">
@@ -408,6 +595,18 @@ function App() {
             >
               {soundOn ? t.soundOn : t.soundOff}
             </button>
+            <button
+              className={`pill ${showKeys ? 'active' : ''}`}
+              onClick={() => setShowKeys((value) => !value)}
+            >
+              {showKeys ? t.showKeysOn : t.showKeysOff}
+            </button>
+            <button
+              className={`pill ${showDescription ? 'active' : ''}`}
+              onClick={() => setShowDescription((value) => !value)}
+            >
+              {showDescription ? t.showDescOn : t.showDescOff}
+            </button>
           </div>
         </div>
         <div className="control-group">
@@ -425,81 +624,6 @@ function App() {
           </div>
         </div>
       </section>
-
-      <main className="game">
-        <section className="prompt-card">
-          <div className="prompt-header">
-            <span>{t.promptLabel}</span>
-            <span className="mode-tag" data-testid="mode-tag">
-              {mode === 'practice' ? t.modeTagPractice : t.modeTagTime}
-            </span>
-          </div>
-          <h2 data-testid="question-title">
-            {questionTitle} <span>{questionSubtitle}</span>
-          </h2>
-          <div className="keys-row">
-            {currentQuestion?.keys.map((key, index) => (
-              <span className="key-chip" key={`${currentQuestion.id}-${key}-${index}`}>
-                {key}
-              </span>
-            ))}
-          </div>
-          <div className="input-row">
-            {currentQuestion?.keys.map((_, index) => {
-              const status =
-                index < tokenIndex
-                  ? 'correct'
-                  : index === tokenIndex
-                    ? lastResult === 'wrong'
-                      ? 'wrong'
-                      : 'active'
-                    : 'pending'
-              return (
-                <span
-                  className={`input-token ${status}`}
-                  data-testid={`input-token-${index}`}
-                  key={`input-${index}`}
-                >
-                  {typedTokens[index] ?? ''}
-                </span>
-              )
-            })}
-          </div>
-          <p className="hint">
-            {t.hint}
-          </p>
-        </section>
-
-        <aside className="stats">
-          <div className="stat-card">
-            <span>{t.score}</span>
-            <strong data-testid="score-value">{score}</strong>
-          </div>
-          <div className="stat-card">
-            <span>{t.correct}</span>
-            <strong data-testid="correct-value">{correctInputs}</strong>
-          </div>
-          <div className="stat-card">
-            <span>{t.wrong}</span>
-            <strong data-testid="wrong-value">{wrongInputs}</strong>
-          </div>
-          <div className="stat-card">
-            <span>{t.timeLeft}</span>
-            <strong data-testid="time-left">
-              {mode === 'practice' ? t.infinity : `${timeLeft}s`}
-            </strong>
-          </div>
-          {mode === 'time' && !running && (
-            <button
-              className="primary"
-              data-testid="start-button"
-              onClick={startTimeAttack}
-            >
-              {t.start}
-            </button>
-          )}
-        </aside>
-      </main>
 
       {showResult && mode === 'time' && (
         <div className="overlay">

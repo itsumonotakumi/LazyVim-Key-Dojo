@@ -7,6 +7,10 @@
   gap: 32px;
 }
 
+.app-shake {
+  animation: app-shake 0.22s ease-in-out;
+}
+
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
@@ -34,6 +38,17 @@
 .subtitle {
   color: #344646;
   font-size: 1rem;
+  max-width: 520px;
+}
+
+.notice {
+  margin: 10px 0 0;
+  font-size: 0.9rem;
+  color: #7a4f14;
+  background: rgba(255, 216, 165, 0.5);
+  border: 1px solid rgba(255, 184, 76, 0.6);
+  padding: 8px 12px;
+  border-radius: 12px;
   max-width: 520px;
 }
 
@@ -162,6 +177,17 @@
   overflow: hidden;
 }
 
+.prompt-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.3), transparent 60%);
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+}
+
 .prompt-card::after {
   content: '';
   position: absolute;
@@ -171,9 +197,59 @@
   pointer-events: none;
 }
 
+.prompt-card.flash-correct::before {
+  opacity: 0.9;
+  transform: scale(1.05);
+  background: radial-gradient(circle at center, rgba(94, 255, 180, 0.35), transparent 60%);
+}
+
+.prompt-card.flash-wrong::before {
+  opacity: 0.95;
+  transform: scale(1.05);
+  background: radial-gradient(circle at center, rgba(255, 94, 94, 0.35), transparent 60%);
+}
+
+.prompt-card.flash-streak::before {
+  opacity: 1;
+  transform: scale(1.08);
+  background: radial-gradient(circle at center, rgba(255, 200, 110, 0.4), transparent 60%);
+}
+
 .prompt-card > * {
   position: relative;
   z-index: 1;
+}
+
+.confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 0;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: -10%;
+  left: var(--x);
+  width: 10px;
+  height: 14px;
+  border-radius: 4px;
+  opacity: 0;
+  background: linear-gradient(140deg, #ffb84c, #ff8c5a);
+  transform: translate3d(0, -20%, 0) rotate(var(--r));
+}
+
+.confetti-piece:nth-child(3n) {
+  background: linear-gradient(140deg, #5effc4, #2dd4bf);
+}
+
+.confetti-piece:nth-child(4n) {
+  background: linear-gradient(140deg, #6ac2ff, #7c83ff);
+}
+
+.confetti.active .confetti-piece {
+  animation: confetti-fall 0.9s ease-out var(--d) both;
 }
 
 .prompt-header {
@@ -209,6 +285,13 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.action-desc {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #d4e4e1;
+  line-height: 1.5;
 }
 
 .key-chip {
@@ -248,12 +331,13 @@
   background: rgba(94, 255, 180, 0.2);
   border-color: rgba(94, 255, 180, 0.6);
   color: #c9ffe6;
+  animation: pop 0.18s ease-out;
 }
 
 .input-token.wrong {
   background: rgba(255, 94, 94, 0.18);
   border-color: rgba(255, 94, 94, 0.6);
-  animation: shake 0.2s linear 2;
+  animation: shake 0.2s linear 2, pop 0.18s ease-out;
 }
 
 .input-token.pending {
@@ -290,6 +374,11 @@
 .stat-card strong {
   font-size: 1.5rem;
   color: #0d1b1e;
+}
+
+.score-pop {
+  display: inline-block;
+  animation: score-pop 0.22s ease-out;
 }
 
 .primary {
@@ -367,6 +456,59 @@
   }
   100% {
     transform: translateX(0);
+  }
+}
+
+@keyframes app-shake {
+  0% {
+    transform: translateX(0);
+  }
+  30% {
+    transform: translateX(-6px);
+  }
+  60% {
+    transform: translateX(6px);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes confetti-fall {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -20%, 0) rotate(var(--r));
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(-20px, 140%, 0) rotate(calc(var(--r) + 180deg));
+  }
+}
+
+@keyframes score-pop {
+  0% {
+    transform: scale(1);
+  }
+  60% {
+    transform: scale(1.16);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(1);
+  }
+  60% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
   }
 }
 

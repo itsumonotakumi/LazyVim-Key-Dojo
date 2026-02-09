@@ -4,6 +4,8 @@ export type Question = {
   titleEn: string
   keys: string[]
   category: string
+  description?: string
+  descriptionEn?: string
 }
 
 export const QUESTIONS: Question[] = [
